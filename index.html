@@ -40,6 +40,19 @@ input{font-family:'Amiri',serif;font-size:17px;color:var(--ink);background:var(-
 @keyframes pl{50%{opacity:.35}}
 .row.new{animation:nw 2.5s ease}
 @keyframes nw{0%{background:rgba(98,88,85,.14)}100%{background:transparent}}
+
+.addbtn{font-family:'Amiri',serif;font-size:18px;padding:9px;border-radius:16px;border:1px dashed rgba(98,88,85,.45);background:var(--card);color:var(--ink);cursor:pointer;width:100%}
+.add{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;display:grid;gap:10px}
+.add[hidden],.addbtn[hidden]{display:none}
+.add h3{font-size:22px;font-weight:400;text-align:center}
+.seg{display:flex;gap:8px}.seg button{flex:1;font-family:'Amiri',serif;font-size:17px;padding:7px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.5);color:var(--ink);cursor:pointer}
+.seg button.on{background:var(--ink);color:#f6f2ee;border-color:var(--ink)}
+.nmrow{display:flex;gap:6px}.nmrow button{width:40px;flex:none;font-size:20px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.5);color:var(--ink);cursor:pointer}
+.acts{display:flex;gap:8px;justify-content:center}
+.save{font-family:'Amiri',serif;font-size:18px;padding:7px 26px;border-radius:20px;border:0;background:var(--ink);color:#f6f2ee;cursor:pointer}
+.save:disabled{opacity:.6}
+.aerr{color:var(--no);text-align:center;font-size:15px;min-height:1em}
+.man{font-size:12px;color:var(--ink2);margin-inline-start:6px}
 </style></head><body>
 <main>
   <h1>قائمة الحضور</h1>
@@ -53,6 +66,14 @@ input{font-family:'Amiri',serif;font-size:17px;color:var(--ink);background:var(-
     <div class="tabs" id="tabs"><button data-v="all" class="on">الكل</button><button data-v="yes">الحضور</button><button data-v="no">المعتذرين</button></div>
     <button class="tool" id="copy">نسخ القائمة</button>
     <button class="tool" id="dl">تنزيل ملف Excel</button>
+  </div>
+  <button class="addbtn" id="openAdd">＋ إضافة أسماء</button>
+  <div class="add" id="add" hidden>
+    <h3>إضافة أسماء حاضرين</h3>
+    <div id="aNames"></div>
+    <button class="tool" id="aMore" type="button">＋ اسم آخر</button>
+    <div class="aerr" id="aErr"></div>
+    <div class="acts"><button class="save" id="aSave">حفظ</button><button class="tool" id="aCancel" type="button">إلغاء</button></div>
   </div>
   <input id="q" placeholder="ابحث عن اسم…">
   <div class="list" id="list"><div class="msg">جارٍ التحميل…</div></div>
@@ -70,7 +91,7 @@ function parse(d){
   let names=Array.isArray(o.names)&&o.names.length?o.names:[o.name1,o.name2,o.name3,o.name4].filter(Boolean);
   const attending=o.attending!==false;
   const count=attending?(Number(o.count)||names.length||1):0;
-  return {id:d.name.split('/').pop(),names,attending,count,time:o.createdAt||d.createTime};
+  return {id:d.name.split('/').pop(),names,attending,count,time:o.createdAt||d.createTime,manual:o.source==='manual'};
 }
 function fmt(t){ const d=new Date(t); if(!t||isNaN(d)) return ''; return d.toLocaleString('en-GB',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) }
 function render(fresh=[]){
@@ -85,6 +106,7 @@ function render(fresh=[]){
     const d=document.createElement('div'); d.className='row'+(fresh.includes(r.id)?' new':'');
     const nm=document.createElement('div'); nm.className='nm'; nm.textContent=r.names[0]||'—';
     if(r.names.length>1){ const s=document.createElement('small'); s.textContent=r.names.slice(1).join('، '); nm.appendChild(s) }
+    if(r.manual){const m=document.createElement('span');m.className='man';m.textContent='(أُضيف يدوياً)';nm.firstChild.after(m)}
     const tg=document.createElement('div'); tg.className='tag '+(r.attending?'yes':'no');
     tg.textContent=r.attending?(r.count===1?'شخص':r.count===2?'شخصان':r.count+' أشخاص'):'معتذر';
     const tm=document.createElement('div'); tm.className='tm'; tm.textContent=fmt(r.time);
@@ -114,6 +136,41 @@ $('dl').addEventListener('click',()=>{
   a.download='قائمة-الحضور-حلا-وعلي.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
 });
 
+// ---- manual add ----
+let aAtt='yes';
+function nameRow(v=''){ const r=document.createElement('div'); r.className='nmrow';
+  const i=document.createElement('input'); i.placeholder='الاسم الكامل'; i.value=v;
+  const x=document.createElement('button'); x.type='button'; x.textContent='×'; x.title='حذف';
+  x.onclick=()=>{ if($('aNames').children.length>1) r.remove(); else i.value=''; };
+  r.append(i,x); $('aNames').appendChild(r); return i; }
+function resetAdd(){ $('aNames').textContent=''; nameRow(); $('aErr').textContent=''; }
+$('openAdd').onclick=()=>{ $('add').hidden=false; $('openAdd').hidden=true; resetAdd(); $('aNames').querySelector('input').focus(); };
+$('aCancel').onclick=()=>{ $('add').hidden=true; $('openAdd').hidden=false; };
+$('aMore').onclick=()=>nameRow().focus();
+$('aNames').addEventListener('input',()=>$('aErr').textContent='');
+$('aSave').onclick=async()=>{
+  const names=[...$('aNames').querySelectorAll('input')].map(i=>i.value.trim()).filter(Boolean);
+  if(!names.length){ $('aErr').textContent='اكتبي اسم واحد على الأقل'; return; }
+  const yes=aAtt==='yes';
+  // each name as its own entry when declined; one group when attending
+  const groups= yes ? [names] : names.map(n=>[n]);
+  $('aSave').disabled=true; $('aSave').textContent='جارٍ الحفظ…'; $('aErr').textContent='';
+  try{
+    for(const g of groups){
+      const fields={ attending:{booleanValue:yes}, count:{integerValue:String(yes?g.length:0)},
+        names:{arrayValue:{values:g.map(n=>({stringValue:n}))}}, source:{stringValue:'manual'},
+        createdAt:{timestampValue:new Date().toISOString()} };
+      g.forEach((n,i)=>fields['name'+(i+1)]={stringValue:n});
+      const r=await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/${FIREBASE.collection}?key=${FIREBASE.apiKey}`,
+        {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields})});
+      if(!r.ok) throw new Error(r.status);
+    }
+    resetAdd(); $('aErr').textContent=''; $('add').hidden=true; $('openAdd').hidden=false;
+    if(typeof poll==='function' && !window.__live) poll();
+  }catch(e){ $('aErr').textContent='ما انحفظت الأسماء ('+e.message+')، حاولي مرة ثانية'; }
+  $('aSave').disabled=false; $('aSave').textContent='حفظ';
+};
+
 let seen=null;
 function setRows(docs){
   rows=docs.map(parse).sort((a,b)=>String(b.time).localeCompare(String(a.time)));
@@ -135,7 +192,7 @@ async function poll(){
     const {getFirestore,collection,onSnapshot}=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
     const db=getFirestore(initializeApp({apiKey:FIREBASE.apiKey,projectId:FIREBASE.projectId}));
     onSnapshot(collection(db,FIREBASE.collection),snap=>{
-      setRows(snap.docs.map(d=>({name:'x/'+d.id,fields:null,_data:d.data()}))); status(true);
+      window.__live=true; setRows(snap.docs.map(d=>({name:'x/'+d.id,fields:null,_data:d.data()}))); status(true);
     },err=>{ console.error(err); status(false); poll(); setInterval(poll,5000); });
   }catch(e){ console.warn('live SDK unavailable, polling',e); poll(); setInterval(poll,5000); }
 })();
